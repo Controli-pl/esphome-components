@@ -49,7 +49,10 @@ This command streams an audio file to ESPHome using ffmpeg:
 ffmpeg -re -i <some music file> -ar 16000 -f s8 udp://<ESPHome IP>:6055\?pkt_size=1024
 ```
 
-## Dew Point
+## ~~Dew Point~~
+__DEPRECATED__
+Starting with ESPHome 2026.3, [dewpoint](https://esphome.io/components/sensor/dew_point/) is builtin.
+
 A small component that calculates the dew point from an existing temperature and humidity sensor. It publishes a sensor entity with the calculated dew point value.
 
 
