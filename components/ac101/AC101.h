@@ -110,6 +110,7 @@ class AC101 : public Component, public i2c::I2CDevice, public audio_dac::AudioDa
   float volume() override;
   bool set_mute_off() override;
   bool set_mute_on() override;
+  bool is_muted() override;
 
  protected:
   // Get speaker volume.

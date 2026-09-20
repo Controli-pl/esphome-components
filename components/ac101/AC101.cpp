@@ -261,10 +261,9 @@ bool AC101::set_volume(float volume) {
   uint8_t hp_step = (uint8_t) std::lround(volume_linear_to_step(this->volume_, 63, 50.0f));
   uint8_t spk_step = (uint8_t) std::lround(volume_linear_to_step(this->volume_, 62, 50.0f));
 
-  this->SetVolumeHeadphone(hp_step);
-  this->SetVolumeSpeaker(spk_step);
-
   if (!this->is_muted_) {
+    this->SetVolumeHeadphone(hp_step);
+    this->SetVolumeSpeaker(spk_step);
     this->volume_before_mute_ = hp_step;
   }
 
@@ -297,6 +296,8 @@ bool AC101::set_mute_off() {
   ESP_LOGD(TAG, "set_mute_off()");
   return true;
 }
+
+bool AC101::is_muted() { return this->is_muted_; }
 
 #define ARRAY_SIZE(x) (sizeof(x) / sizeof(x[0]))
 void AC101::dump_config() {
