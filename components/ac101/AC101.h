@@ -1,28 +1,29 @@
 /*
-        Edited for esphome
+Edited for esphome
 
-        AC101 - An AC101 Codec driver library for Arduino
-        Copyright (C) 2019, Ivo Pullens, Emmission
+AC101 - An AC101 Codec driver library for Arduino
+Copyright (C) 2019, Ivo Pullens, Emmission
 
-        Inspired by:
-        https://github.com/donny681/esp-adf/tree/master/components/audio_hal/driver/AC101
+Inspired by:
+https://github.com/donny681/esp-adf/tree/master/components/audio_hal/driver/AC101
 
-        This program is free software: you can redistribute it and/or modify
-        it under the terms of the GNU General Public License as published by
-        the Free Software Foundation, either version 3 of the License, or
-        (at your option) any later version.
+This program is free software: you can redistribute it and/or modify
+it under the terms of the GNU General Public License as published by
+the Free Software Foundation, either version 3 of the License, or
+(at your option) any later version.
 
-        This program is distributed in the hope that it will be useful,
-        but WITHOUT ANY WARRANTY; without even the implied warranty of
-        MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-        GNU General Public License for more details.
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+GNU General Public License for more details.
 
-        You should have received a copy of the GNU General Public License
-        along with this program.  If not, see <http://www.gnu.org/licenses/>.
+You should have received a copy of the GNU General Public License
+along with this program. If not, see .
 */
 
 #pragma once
 
+#include "esphome/components/audio_dac/audio_dac.h"
 #include "esphome/components/i2c/i2c.h"
 #include "esphome/core/component.h"
 
@@ -88,8 +89,10 @@ enum I2sLrClockDiv_t {
 
 enum Mode_t { MODE_ADC, MODE_DAC, MODE_ADC_DAC, MODE_LINE };
 
-class AC101 : public Component, public i2c::I2CDevice {
-public:
+// UWAGA: dodano dziedziczenie po audio_dac::AudioDac, żeby komponent
+// snapclient (i inne wymagające audio_dac:) mógł wskazywać na tę instancję.
+class AC101 : public Component, public i2c::I2CDevice, public audio_dac::AudioDac {
+ public:
   AC101() = default;
 
   void setup() override;
@@ -98,13 +101,23 @@ public:
 
   float get_setup_priority() const override { return setup_priority::LATE - 1; }
 
-protected:
+  // --- Implementacja interfejsu audio_dac::AudioDac ---
+  // Głośność 0.0-1.0 (skala liniowa wejściowa), przeliczana wewnętrznie
+  // na krok rejestru HPOUT/SPKOUT (0-63 / 0-62dB) wg krzywej logarytmicznej,
+  // żeby uniknąć efektu "40% = już maks głośności" typowego dla skalowania
+  // czysto liniowego na rejestrze działającym w dB.
+  bool set_volume(float volume) override;
+  float volume() override;
+  bool set_mute_off() override;
+  bool set_mute_on() override;
+
+ protected:
   // Get speaker volume.
   // @return Speaker volume, [63..0] for [0..-43.5] [dB], in increments of 2.
   uint8_t GetVolumeSpeaker();
 
   // Set speaker volume.
-  // @param volume   Target volume, [63..0] for [0..-43.5] [dB], in increments
+  // @param volume Target volume, [63..0] for [0..-43.5] [dB], in increments
   // of 2.
   void SetVolumeSpeaker(uint8_t volume);
 
@@ -113,40 +126,45 @@ protected:
   uint8_t GetVolumeHeadphone();
 
   // Set headphone volume
-  // @param volume   Target volume, [63..0] for [0..-62] [dB]
+  // @param volume Target volume, [63..0] for [0..-62] [dB]
   void SetVolumeHeadphone(uint8_t volume);
 
   // Configure I2S samplerate.
-  // @param rate   Samplerate.
+  // @param rate Samplerate.
   void SetI2sSampleRate(I2sSampleRate_t rate);
 
   // Configure I2S mode (master/slave).
-  // @param mode   Mode.
+  // @param mode Mode.
   void SetI2sMode(I2sMode_t mode);
 
   // Configure I2S word size (8/16/20/24 bits).
-  // @param size   Word size.
+  // @param size Word size.
   void SetI2sWordSize(I2sWordSize_t size);
 
   // Configure I2S format (I2S/Left/Right/Dsp).
-  // @param format   I2S format.
+  // @param format I2S format.
   void SetI2sFormat(I2sFormat_t format);
 
   // Configure I2S clock.
-  // @param bitClockDiv   I2S1CLK/BCLK1 ratio.
-  // @param bitClockInv   I2S1 BCLK Polarity.
-  // @param lrClockDiv    BCLK1/LRCK ratio.
-  // @param lrClockInv    I2S1 LRCK Polarity.
+  // @param bitClockDiv I2S1CLK/BCLK1 ratio.
+  // @param bitClockInv I2S1 BCLK Polarity.
+  // @param lrClockDiv BCLK1/LRCK ratio.
+  // @param lrClockInv I2S1 LRCK Polarity.
   void SetI2sClock(I2sBitClockDiv_t bitClockDiv, bool bitClockInv,
-                   I2sLrClockDiv_t lrClockDiv, bool lrClockInv);
+                    I2sLrClockDiv_t lrClockDiv, bool lrClockInv);
 
   // Configure the mode (Adc/Dac/Adc+Dac/Line)
-  // @param mode    Operating mode.
+  // @param mode Operating mode.
   void SetMode(Mode_t mode);
 
-private:
+  // Wewnętrzny stan wymagany przez interfejs AudioDac
+  float volume_{1.0f};
+  bool is_muted_{false};
+  uint8_t volume_before_mute_{63};
+
+ private:
   bool WriteReg(uint8_t reg, uint16_t val);
   bool ReadReg(uint8_t reg, uint16_t *val);
 };
 
-} // namespace esphome::ac101
+}  // namespace esphome::ac101

@@ -1,24 +1,24 @@
 /*
-        Edited for esphome
+Edited for esphome
 
-        AC101 - An AC101 Codec driver library for Arduino
-        Copyright (C) 2019, Ivo Pullens, Emmission
+AC101 - An AC101 Codec driver library for Arduino
+Copyright (C) 2019, Ivo Pullens, Emmission
 
-        Inspired by:
-        https://github.com/donny681/esp-adf/tree/master/components/audio_hal/driver/AC101
+Inspired by:
+https://github.com/donny681/esp-adf/tree/master/components/audio_hal/driver/AC101
 
-        This program is free software: you can redistribute it and/or modify
-        it under the terms of the GNU General Public License as published by
-        the Free Software Foundation, either version 3 of the License, or
-        (at your option) any later version.
+This program is free software: you can redistribute it and/or modify
+it under the terms of the GNU General Public License as published by
+the Free Software Foundation, either version 3 of the License, or
+(at your option) any later version.
 
-        This program is distributed in the hope that it will be useful,
-        but WITHOUT ANY WARRANTY; without even the implied warranty of
-        MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-        GNU General Public License for more details.
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+GNU General Public License for more details.
 
-        You should have received a copy of the GNU General Public License
-        along with this program.  If not, see <http://www.gnu.org/licenses/>.
+You should have received a copy of the GNU General Public License
+along with this program. If not, see .
 */
 
 #include "AC101.h"
@@ -28,17 +28,21 @@
 #include "esphome/components/i2c/i2c.h"
 #include "esphome/core/component.h"
 
+#include <algorithm>
+#include <cmath>
+
 namespace esphome::ac101 {
 
 static const char *const TAG = "AC101";
 
-#define AC101_ERROR_CHECK(func)                                                \
-  if (!(func)) {                                                               \
-    this->mark_failed();                                                       \
-    return;                                                                    \
+#define AC101_ERROR_CHECK(func) \
+  if (!(func)) { \
+    this->mark_failed(); \
+    return; \
   }
+
 #define AC101_READ_REG(reg, value) AC101_ERROR_CHECK(this->ReadReg(reg, value));
-#define AC101_WRITE_REG(reg, value)                                            \
+#define AC101_WRITE_REG(reg, value) \
   AC101_ERROR_CHECK(this->WriteReg(reg, value));
 
 bool AC101::WriteReg(uint8_t reg, uint16_t value) {
@@ -55,16 +59,15 @@ void AC101::setup() {
   // Reset all registers, readback default as sanity check
   AC101_WRITE_REG(AC101_CHIP_AUDIO_RS, 0x0123);
   delay(100);
-  {
-    uint16_t val;
-    AC101_READ_REG(AC101_CHIP_AUDIO_RS, &val);
-    if (val != 0x0101) {
-      ESP_LOGE(TAG,
-               "failed to reset AC101 (CHIP_AUDIO_RST=0x%04x, expected 0x0101)",
-               val);
-      this->mark_failed();
-      return;
-    }
+
+  uint16_t val;
+  AC101_READ_REG(AC101_CHIP_AUDIO_RS, &val);
+  if (val != 0x0101) {
+    ESP_LOGE(TAG,
+             "failed to reset AC101 (CHIP_AUDIO_RST=0x%04x, expected 0x0101)",
+             val);
+    this->mark_failed();
+    return;
   }
 
   AC101_WRITE_REG(AC101_SPKOUT_CTRL, 0xe880);
@@ -105,6 +108,10 @@ void AC101::setup() {
   this->SetMode(MODE_ADC_DAC);
   this->SetVolumeSpeaker(63);
   this->SetVolumeHeadphone(63);
+
+  this->volume_ = 1.0f;
+  this->volume_before_mute_ = 63;
+  this->is_muted_ = false;
 }
 
 uint8_t AC101::GetVolumeSpeaker() {
@@ -147,7 +154,7 @@ void AC101::SetVolumeHeadphone(uint8_t volume) {
 
   uint16_t val;
   AC101_READ_REG(AC101_HPOUT_CTRL, &val);
-  val &= ~63 << 4;
+  val &= ~(63 << 4);
   val |= volume << 4;
   AC101_WRITE_REG(AC101_HPOUT_CTRL, val);
 }
@@ -181,7 +188,7 @@ void AC101::SetI2sFormat(I2sFormat_t format) {
 }
 
 void AC101::SetI2sClock(I2sBitClockDiv_t bitClockDiv, bool bitClockInv,
-                        I2sLrClockDiv_t lrClockDiv, bool lrClockInv) {
+                         I2sLrClockDiv_t lrClockDiv, bool lrClockInv) {
   uint16_t val;
   AC101_READ_REG(AC101_I2S1LCK_CTRL, &val);
   val &= ~0x7FC0;
@@ -218,6 +225,79 @@ void AC101::SetMode(Mode_t mode) {
   }
 }
 
+// ---------------------------------------------------------------------
+// Implementacja interfejsu audio_dac::AudioDac
+// ---------------------------------------------------------------------
+//
+// AC101 reguluje głośność liniowo w rejestrze (krok = stały ułamek dB:
+// headphone 0..63 -> 0..-62dB, tj. ok. 1dB/krok). Żeby uniknąć efektu
+// "40% suwaka = już maksymalna słyszalna głośność" (typowy problem przy
+// czysto liniowym mapowaniu 0-100% na 0-63), przeliczamy wejściową
+// wartość 0.0-1.0 na tłumienie w dB w sposób zbliżony do percepcji
+// głośności (krzywa wykładnicza), a dopiero to tłumienie mapujemy na
+// krok rejestru 0-63.
+//
+// db_range definiuje, ile dB w dół od pełnej głośności wykorzystujemy
+// na całym zakresie suwaka 0-100%. AC101 fizycznie wspiera do -62dB na
+// headphone i ok. -43.5dB na speaker; używamy 50dB jako bezpiecznego,
+// praktycznego zakresu (dla obu wyjść).
+
+static float volume_linear_to_step(float volume, uint8_t max_step, float db_range) {
+  volume = std::max(0.0f, std::min(1.0f, volume));
+  if (volume <= 0.0f) {
+    return 0.0f;
+  }
+  // wykładnicze mapowanie: postrzegana głośność ~ volume^2..3 daje
+  // subiektywnie równomierny przyrost głośności w całym zakresie suwaka
+  float perceptual = std::pow(volume, 2.5f);
+  float attenuation_db = (1.0f - perceptual) * db_range;
+  float step = (float) max_step * (1.0f - (attenuation_db / db_range));
+  return std::max(0.0f, std::min((float) max_step, step));
+}
+
+bool AC101::set_volume(float volume) {
+  this->volume_ = std::max(0.0f, std::min(1.0f, volume));
+
+  uint8_t hp_step = (uint8_t) std::lround(volume_linear_to_step(this->volume_, 63, 50.0f));
+  uint8_t spk_step = (uint8_t) std::lround(volume_linear_to_step(this->volume_, 62, 50.0f));
+
+  this->SetVolumeHeadphone(hp_step);
+  this->SetVolumeSpeaker(spk_step);
+
+  if (!this->is_muted_) {
+    this->volume_before_mute_ = hp_step;
+  }
+
+  ESP_LOGD(TAG, "set_volume(%.3f) -> hp_step=%u spk_step=%u", volume, hp_step, spk_step);
+  return true;
+}
+
+float AC101::volume() { return this->volume_; }
+
+bool AC101::set_mute_on() {
+  if (!this->is_muted_) {
+    this->volume_before_mute_ = this->GetVolumeHeadphone();
+  }
+  this->SetVolumeHeadphone(0);
+  this->SetVolumeSpeaker(0);
+  this->is_muted_ = true;
+  ESP_LOGD(TAG, "set_mute_on()");
+  return true;
+}
+
+bool AC101::set_mute_off() {
+  if (this->is_muted_) {
+    this->SetVolumeHeadphone(this->volume_before_mute_);
+    // spk_step przeliczamy z aktualnie ustawionego volume_, żeby zachować
+    // spójność proporcji headphone/speaker po odciszeniu
+    uint8_t spk_step = (uint8_t) std::lround(volume_linear_to_step(this->volume_, 62, 50.0f));
+    this->SetVolumeSpeaker(spk_step);
+  }
+  this->is_muted_ = false;
+  ESP_LOGD(TAG, "set_mute_off()");
+  return true;
+}
+
 #define ARRAY_SIZE(x) (sizeof(x) / sizeof(x[0]))
 void AC101::dump_config() {
   ESP_LOGCONFIG(TAG, "AC101 Audio Codec:");
@@ -237,4 +317,4 @@ void AC101::dump_config() {
 #endif
 }
 
-} // namespace esphome::ac101
+}  // namespace esphome::ac101
