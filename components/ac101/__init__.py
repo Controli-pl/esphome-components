@@ -1,14 +1,13 @@
 import esphome.codegen as cg
 import esphome.config_validation as cv
 
-from esphome.components import i2c
+from esphome.components import audio_dac, i2c
 from esphome.const import CONF_ID
 
 DEPENDENCIES = ["i2c"]
 
 ac101_ns = cg.esphome_ns.namespace("ac101")
-AC101 = ac101_ns.class_("AC101", cg.Component, i2c.I2CDevice)
-
+AC101 = ac101_ns.class_("AC101", cg.Component, i2c.I2CDevice, audio_dac.AudioDac)
 
 CONFIG_SCHEMA = (
     cv.Schema({cv.GenerateID(): cv.declare_id(AC101)})
