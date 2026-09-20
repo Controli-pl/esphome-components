@@ -249,7 +249,7 @@ static float volume_linear_to_step(float volume, uint8_t max_step, float db_rang
   }
   // wykładnicze mapowanie: postrzegana głośność ~ volume^2..3 daje
   // subiektywnie równomierny przyrost głośności w całym zakresie suwaka
-  float perceptual = std::pow(volume, 2.5f);
+  float perceptual = std::pow(volume, 1.4f);
   float attenuation_db = (1.0f - perceptual) * db_range;
   float step = (float) max_step * (1.0f - (attenuation_db / db_range));
   return std::max(0.0f, std::min((float) max_step, step));
