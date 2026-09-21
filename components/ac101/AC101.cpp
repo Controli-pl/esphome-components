@@ -242,7 +242,7 @@ void AC101::SetMode(Mode_t mode) {
 // headphone i ok. -43.5dB na speaker; używamy 50dB jako bezpiecznego,
 // praktycznego zakresu (dla obu wyjść).
 
-static constexpr float AC101_VOLUME_EXP = 0.65f;  // < 1 = głośniej na dole suwaka
+static constexpr float AC101_VOLUME_EXP = 0.80f;  // < 1 = głośniej na dole suwaka
 
 static float volume_linear_to_step(float volume, uint8_t max_step, float /*db_range*/) {
   volume = std::max(0.0f, std::min(1.0f, volume));
