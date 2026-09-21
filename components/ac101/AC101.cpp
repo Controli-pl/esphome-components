@@ -242,23 +242,47 @@ void AC101::SetMode(Mode_t mode) {
 // headphone i ok. -43.5dB na speaker; używamy 50dB jako bezpiecznego,
 // praktycznego zakresu (dla obu wyjść).
 
-static constexpr float AC101_VOLUME_EXP = 0.80f;  // < 1 = głośniej na dole suwaka
+
+
+static constexpr float AC101_VOLUME_EXP = 1.0f;  // z powrotem liniowo
+static constexpr uint8_t AC101_HP_MAX  = 28;     // było 63 — dobierz 20–35
+static constexpr uint8_t AC101_SPK_MAX = 28;     // było 62
 
 static float volume_linear_to_step(float volume, uint8_t max_step, float /*db_range*/) {
   volume = std::max(0.0f, std::min(1.0f, volume));
   if (volume <= 0.0f)
     return 0.0f;
-
-  // 2% ≈ stary poziom z ~6%, 4–6% już słyszalne
-  float perceptual = std::pow(volume, AC101_VOLUME_EXP);
-  float step = static_cast<float>(max_step) * perceptual;
-
-  // opcjonalnie: przy >0% nie schodź poniżej 1 kroku (unikasz totalnej ciszy)
+  float step = static_cast<float>(max_step) * std::pow(volume, AC101_VOLUME_EXP);
   if (step > 0.0f && step < 1.0f)
     step = 1.0f;
-
-  return std::max(0.0f, std::min(static_cast<float>(max_step), step));
+  return std::min(static_cast<float>(max_step), step);
 }
+
+// w set_volume:
+uint8_t hp_step  = (uint8_t) std::lround(volume_linear_to_step(this->volume_, AC101_HP_MAX, 50.0f));
+uint8_t spk_step = (uint8_t) std::lround(volume_linear_to_step(this->volume_, AC101_SPK_MAX, 50.0f));
+
+
+//poniższe działało ale duży skok między nic a minimalna głośność, a max to aż strach sprawdzać ;-)
+
+
+// static constexpr float AC101_VOLUME_EXP = 0.80f;  // < 1 = głośniej na dole suwaka
+
+// static float volume_linear_to_step(float volume, uint8_t max_step, float /*db_range*/) {
+//   volume = std::max(0.0f, std::min(1.0f, volume));
+//   if (volume <= 0.0f)
+//     return 0.0f;
+
+//   // 2% ≈ stary poziom z ~6%, 4–6% już słyszalne
+//   float perceptual = std::pow(volume, AC101_VOLUME_EXP);
+//   float step = static_cast<float>(max_step) * perceptual;
+
+//   // opcjonalnie: przy >0% nie schodź poniżej 1 kroku (unikasz totalnej ciszy)
+//   if (step > 0.0f && step < 1.0f)
+//     step = 1.0f;
+
+//   return std::max(0.0f, std::min(static_cast<float>(max_step), step));
+// }
 
 // static float volume_linear_to_step(float volume, uint8_t max_step, float db_range) {
 //   volume = std::max(0.0f, std::min(1.0f, volume));
