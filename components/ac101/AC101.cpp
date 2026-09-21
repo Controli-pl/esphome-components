@@ -258,9 +258,7 @@ static float volume_linear_to_step(float volume, uint8_t max_step, float /*db_ra
   return std::min(static_cast<float>(max_step), step);
 }
 
-// w set_volume:
-uint8_t hp_step  = (uint8_t) std::lround(volume_linear_to_step(this->volume_, AC101_HP_MAX, 50.0f));
-uint8_t spk_step = (uint8_t) std::lround(volume_linear_to_step(this->volume_, AC101_SPK_MAX, 50.0f));
+
 
 
 //poniższe działało ale duży skok między nic a minimalna głośność, a max to aż strach sprawdzać ;-)
@@ -300,8 +298,12 @@ uint8_t spk_step = (uint8_t) std::lround(volume_linear_to_step(this->volume_, AC
 bool AC101::set_volume(float volume) {
   this->volume_ = std::max(0.0f, std::min(1.0f, volume));
 
-  uint8_t hp_step = (uint8_t) std::lround(volume_linear_to_step(this->volume_, 63, 50.0f));
-  uint8_t spk_step = (uint8_t) std::lround(volume_linear_to_step(this->volume_, 62, 50.0f));
+  // uint8_t hp_step = (uint8_t) std::lround(volume_linear_to_step(this->volume_, 63, 50.0f));
+  // uint8_t spk_step = (uint8_t) std::lround(volume_linear_to_step(this->volume_, 62, 50.0f));
+
+  // w set_volume:
+  uint8_t hp_step  = (uint8_t) std::lround(volume_linear_to_step(this->volume_, AC101_HP_MAX, 50.0f));
+  uint8_t spk_step = (uint8_t) std::lround(volume_linear_to_step(this->volume_, AC101_SPK_MAX, 50.0f));  
 
   if (!this->is_muted_) {
     this->SetVolumeHeadphone(hp_step);
