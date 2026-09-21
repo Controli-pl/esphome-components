@@ -242,18 +242,33 @@ void AC101::SetMode(Mode_t mode) {
 // headphone i ok. -43.5dB na speaker; używamy 50dB jako bezpiecznego,
 // praktycznego zakresu (dla obu wyjść).
 
-static float volume_linear_to_step(float volume, uint8_t max_step, float db_range) {
+// exp > 1 → niski zakres suwaka zostaje cichy dłużej (rozciąga użyteczny zakres)
+// 2.0 = dobry start; 2.2–2.5 jeśli nadal za głośno na dole
+static constexpr float AC101_VOLUME_EXP = 2.2f;
+
+static float volume_linear_to_step(float volume, uint8_t max_step, float /*db_range*/) {
   volume = std::max(0.0f, std::min(1.0f, volume));
-  if (volume <= 0.0f) {
+  if (volume <= 0.0f)
     return 0.0f;
-  }
-  // wykładnicze mapowanie: postrzegana głośność ~ volume^2..3 daje
-  // subiektywnie równomierny przyrost głośności w całym zakresie suwaka 1.0 = standardowe liniowe
-  float perceptual = std::pow(volume, 1.0f);
-  float attenuation_db = (1.0f - perceptual) * db_range;
-  float step = (float) max_step * (1.0f - (attenuation_db / db_range));
-  return std::max(0.0f, std::min((float) max_step, step));
+
+  // perceptual: 10% suwaka ≈ 0.6% poziomu, 25% ≈ 4%, 50% ≈ 18%, 100% = 100%
+  float perceptual = std::pow(volume, AC101_VOLUME_EXP);
+  float step = static_cast<float>(max_step) * perceptual;
+  return std::max(0.0f, std::min(static_cast<float>(max_step), step));
 }
+
+// static float volume_linear_to_step(float volume, uint8_t max_step, float db_range) {
+//   volume = std::max(0.0f, std::min(1.0f, volume));
+//   if (volume <= 0.0f) {
+//     return 0.0f;
+//   }
+//   // wykładnicze mapowanie: postrzegana głośność ~ volume^2..3 daje
+//   // subiektywnie równomierny przyrost głośności w całym zakresie suwaka 1.0 = standardowe liniowe
+//   float perceptual = std::pow(volume, 1.0f);
+//   float attenuation_db = (1.0f - perceptual) * db_range;
+//   float step = (float) max_step * (1.0f - (attenuation_db / db_range));
+//   return std::max(0.0f, std::min((float) max_step, step));
+// }
 
 bool AC101::set_volume(float volume) {
   this->volume_ = std::max(0.0f, std::min(1.0f, volume));
