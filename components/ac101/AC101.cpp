@@ -242,18 +242,21 @@ void AC101::SetMode(Mode_t mode) {
 // headphone i ok. -43.5dB na speaker; używamy 50dB jako bezpiecznego,
 // praktycznego zakresu (dla obu wyjść).
 
-// exp > 1 → niski zakres suwaka zostaje cichy dłużej (rozciąga użyteczny zakres)
-// 2.0 = dobry start; 2.2–2.5 jeśli nadal za głośno na dole
-static constexpr float AC101_VOLUME_EXP = 2.2f;
+static constexpr float AC101_VOLUME_EXP = 0.65f;  // < 1 = głośniej na dole suwaka
 
 static float volume_linear_to_step(float volume, uint8_t max_step, float /*db_range*/) {
   volume = std::max(0.0f, std::min(1.0f, volume));
   if (volume <= 0.0f)
     return 0.0f;
 
-  // perceptual: 10% suwaka ≈ 0.6% poziomu, 25% ≈ 4%, 50% ≈ 18%, 100% = 100%
+  // 2% ≈ stary poziom z ~6%, 4–6% już słyszalne
   float perceptual = std::pow(volume, AC101_VOLUME_EXP);
   float step = static_cast<float>(max_step) * perceptual;
+
+  // opcjonalnie: przy >0% nie schodź poniżej 1 kroku (unikasz totalnej ciszy)
+  if (step > 0.0f && step < 1.0f)
+    step = 1.0f;
+
   return std::max(0.0f, std::min(static_cast<float>(max_step), step));
 }
 
