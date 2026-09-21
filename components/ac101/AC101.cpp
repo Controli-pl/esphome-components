@@ -244,14 +244,17 @@ void AC101::SetMode(Mode_t mode) {
 
 
 
-static constexpr float AC101_VOLUME_EXP = 1.0f;  // z powrotem liniowo
-static constexpr uint8_t AC101_HP_MAX  = 20;     // było 63 — dobierz 20–35
-static constexpr uint8_t AC101_SPK_MAX = 20;     // było 62
+// 2% ≈ dotychczasowe 14% (step ~4)
+// 100% ograniczone — nie pełne 63
+static constexpr float AC101_VOLUME_EXP = 0.50f;
+static constexpr uint8_t AC101_HP_MAX   = 28;
+static constexpr uint8_t AC101_SPK_MAX  = 28;
 
 static float volume_linear_to_step(float volume, uint8_t max_step, float /*db_range*/) {
   volume = std::max(0.0f, std::min(1.0f, volume));
   if (volume <= 0.0f)
     return 0.0f;
+
   float step = static_cast<float>(max_step) * std::pow(volume, AC101_VOLUME_EXP);
   if (step > 0.0f && step < 1.0f)
     step = 1.0f;
